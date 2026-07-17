@@ -1,17 +1,17 @@
-"""FHIR realism over synthetic data + clinical-code validation.
+"""Realismo FHIR sobre dados sintéticos + validação de código clínico.
 
-v1.5. The data stays 100% synthetic, but it is shaped as FHIR R4 resources
-(Patient, Condition, Observation) and returned as a Bundle — the interchange
-format real healthcare systems speak. This keeps the ``data.py`` seam as the one
-place a real FHIR/EHR backend would later plug in.
+v1.5. Os dados permanecem 100% sintéticos, mas são moldados como resources FHIR R4
+(Patient, Condition, Observation) e retornados como um Bundle — o formato de
+intercâmbio que os sistemas de saúde reais falam. Isso mantém a costura de
+``data.py`` como o único lugar onde um backend FHIR/EHR real se plugaria depois.
 
-The differentiator here is **clinical-code validation**: a named risk in medical
-AI is the model hallucinating a code (a LOINC/ICD value that does not exist).
-:func:`validate_loinc` / :func:`validate_icd10` reject unknown codes *before* any
-write, so a fabricated code never enters the record.
+O diferencial aqui é a **validação de código clínico**: um risco conhecido em IA
+médica é o modelo alucinar um código (um valor LOINC/ICD que não existe).
+:func:`validate_loinc` / :func:`validate_icd10` rejeitam códigos desconhecidos
+*antes* de qualquer escrita, para que um código fabricado nunca entre no registro.
 
-Code sets below are a tiny synthetic allowlist — enough to be realistic, not a
-real terminology server.
+Os conjuntos de códigos abaixo são uma pequena allowlist sintética — o suficiente
+para ser realista, não um terminology server real.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from .safety import DomainError
 LOINC_SYSTEM = "http://loinc.org"
 ICD10_SYSTEM = "http://hl7.org/fhir/sid/icd-10"
 
-# Lab name -> LOINC code/display (synthetic allowlist).
+# Nome do lab -> código/display LOINC (allowlist sintética).
 LOINC_BY_LAB_NAME: dict[str, tuple[str, str]] = {
     "hba1c": ("4548-4", "Hemoglobin A1c/Hemoglobin.total"),
     "fasting glucose": ("1558-6", "Fasting glucose"),
@@ -38,7 +38,7 @@ LOINC_BY_LAB_NAME: dict[str, tuple[str, str]] = {
 }
 KNOWN_LOINC: dict[str, str] = {code: display for code, display in LOINC_BY_LAB_NAME.values()}
 
-# Condition label -> ICD-10 code/display (synthetic allowlist).
+# Rótulo de condição -> código/display ICD-10 (allowlist sintética).
 ICD10_BY_CONDITION: dict[str, tuple[str, str]] = {
     "type 2 diabetes": ("E11.9", "Type 2 diabetes mellitus without complications"),
     "hypertension": ("I10", "Essential (primary) hypertension"),
@@ -51,7 +51,7 @@ ICD10_BY_CONDITION: dict[str, tuple[str, str]] = {
 
 
 def validate_loinc(code: str) -> str:
-    """Reject a LOINC code that is not in the known set (anti-hallucination)."""
+    """Rejeita um código LOINC que não esteja no conjunto conhecido (anti-alucinação)."""
     if not isinstance(code, str) or code.strip() not in KNOWN_LOINC:
         raise DomainError(
             f"Unknown LOINC code {code!r}. Refusing to record a fabricated clinical code."
@@ -72,7 +72,7 @@ def icd10_for_condition(label: str) -> tuple[str, str] | None:
 
 
 # --------------------------------------------------------------------------- #
-# Resource mappers — synthetic domain models -> FHIR R4 resource dicts
+# Mapeadores de resource — modelos de domínio sintéticos -> dicts de resource FHIR R4
 # --------------------------------------------------------------------------- #
 
 
@@ -129,7 +129,7 @@ def observation_resource(patient_id: str, index: int, lab: LabResult) -> dict:
 
 
 def patient_bundle(patient: Patient, conditions, labs) -> dict:
-    """A FHIR ``collection`` Bundle: the Patient plus its Conditions and Observations."""
+    """Um Bundle FHIR ``collection``: o Patient mais suas Conditions e Observations."""
     entries = [{"resource": patient_resource(patient)}]
     for i, cond in enumerate(conditions):
         entries.append({"resource": condition_resource(patient.id, i, cond)})

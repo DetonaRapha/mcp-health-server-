@@ -1,11 +1,11 @@
-"""FastMCP server instance and primitive registration.
+"""Instância do servidor FastMCP e registro das primitivas.
 
-``build_server`` wires the tools, resource, and prompt onto a fresh FastMCP
-instance. It optionally accepts a token verifier + auth settings so the HTTP
-entrypoint can run as an OAuth 2.1 Resource Server; without them (the stdio/dev
-default) the server runs unauthenticated and ``require_scope`` is a no-op.
+``build_server`` conecta as tools, o resource e o prompt a uma instância FastMCP
+nova. Ele aceita opcionalmente um token verifier + auth settings para que o
+entrypoint HTTP possa rodar como um Resource Server OAuth 2.1; sem eles (o padrão
+stdio/dev) o servidor roda sem autenticação e ``require_scope`` é um no-op.
 
-Transport: stdio by default; Streamable HTTP (with auth) via ``__main__``.
+Transporte: stdio por padrão; Streamable HTTP (com auth) via ``__main__``.
 """
 
 from __future__ import annotations
@@ -36,12 +36,12 @@ def build_server(
     port: int = 8000,
     stateless_http: bool = False,
 ) -> FastMCP:
-    """Create a FastMCP instance with all primitives registered.
+    """Cria uma instância FastMCP com todas as primitivas registradas.
 
-    ``host``/``port``/``stateless_http`` apply only to the Streamable HTTP
-    transport; stdio ignores them. ``stateless_http=True`` runs without a session
-    (no ``Mcp-Session-Id``), the direction the 2026-07-28 spec formalises, so the
-    server can sit behind a plain round-robin load balancer.
+    ``host``/``port``/``stateless_http`` aplicam-se apenas ao transporte Streamable
+    HTTP; o stdio os ignora. ``stateless_http=True`` roda sem uma sessão (sem
+    ``Mcp-Session-Id``), a direção que a spec 2026-07-28 formaliza, para que o
+    servidor possa ficar atrás de um load balancer round-robin simples.
     """
     configure_audit_logging()
     configure_tracing()
@@ -62,5 +62,5 @@ def build_server(
     return mcp
 
 
-# Module-level instance for `fastmcp`/Inspector entry points and `mcp.run()`.
+# Instância a nível de módulo para os entry points `fastmcp`/Inspector e `mcp.run()`.
 mcp = build_server()

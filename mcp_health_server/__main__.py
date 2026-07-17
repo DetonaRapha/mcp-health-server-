@@ -1,13 +1,14 @@
-"""Entry point for ``python -m mcp_health_server``.
+"""Ponto de entrada para ``python -m mcp_health_server``.
 
-Transport is selected by ``MCP_TRANSPORT`` (default ``stdio``):
+O transporte é selecionado por ``MCP_TRANSPORT`` (padrão ``stdio``):
 
-* ``stdio``           — local hosts (Claude Desktop, MCP Inspector). No auth.
-* ``streamable-http`` — remote. Runs as an OAuth 2.1 Resource Server.
+* ``stdio``           — hosts locais (Claude Desktop, MCP Inspector). Sem auth.
+* ``streamable-http`` — remoto. Executa como um Resource Server OAuth 2.1.
 
-For the HTTP path in dev/CI, a :class:`MockAuthorizationServer` mints the signing
-key and a convenience bearer token (printed to stderr). A real deployment would
-instead verify against a real issuer's JWKS and never use the mock.
+Para o caminho HTTP em dev/CI, um :class:`MockAuthorizationServer` gera a chave
+de assinatura e um bearer token de conveniência (impresso no stderr). Uma
+implantação real, em vez disso, validaria contra o JWKS de um issuer real e
+nunca usaria o mock.
 """
 
 from __future__ import annotations
@@ -27,14 +28,14 @@ from .server import build_server
 
 
 def _run_stdio() -> None:
-    from .server import mcp  # unauthenticated module-level instance
+    from .server import mcp  # instância a nível de módulo sem autenticação
 
     mcp.run(transport="stdio")
 
 
 def _run_http() -> None:
-    # Enabling auth for the HTTP path is explicit; the entrypoint sets it so
-    # require_scope enforces even if the operator forgot the env var.
+    # Habilitar auth para o caminho HTTP é explícito; o entrypoint a define para
+    # que require_scope seja aplicado mesmo que o operador tenha esquecido a env var.
     os.environ["MCP_AUTH_ENABLED"] = "1"
     cfg = AuthConfig.from_env()
 

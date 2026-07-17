@@ -1,15 +1,16 @@
-"""Long-running operations as tasks (handle-based, poll-by-id).
+"""Operações de longa duração como tasks (baseadas em handle, poll-by-id).
 
-v2 concept, built on the stable SDK. The 2026-07-28 spec adds a native *Tasks*
-protocol (``tasks/get``, ``tasks/result``, status ``working``/``completed``/…),
-whose types already ship in ``mcp.types`` — but the high-level FastMCP API does
-not yet expose task-mode tools. So this implements the same *shape* at the
-application level: a start tool returns a task handle + status, and a get tool
-polls it. The status strings are the protocol's own constants, so migrating to
-native Tasks under SDK v2 is a rename, not a redesign.
+Conceito v2, construído sobre o SDK estável. A spec 2026-07-28 adiciona um
+protocolo *Tasks* nativo (``tasks/get``, ``tasks/result``, status
+``working``/``completed``/…), cujos tipos já vêm em ``mcp.types`` — mas a API de
+alto nível do FastMCP ainda não expõe tools em modo task. Então isto implementa o
+mesmo *formato* a nível de aplicação: uma tool de start retorna um handle de task
++ status, e uma tool de get faz o poll dela. As strings de status são as próprias
+constantes do protocolo, então migrar para os Tasks nativos no SDK v2 é uma
+renomeação, não um redesign.
 
-Use case: a cohort report over the synthetic population — the kind of aggregate a
-host should not block a turn on.
+Caso de uso: um relatório de coorte sobre a população sintética — o tipo de
+agregação em que um host não deveria bloquear um turno.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ def _run_cohort_report(condition: str) -> dict:
 
 
 def reset() -> None:
-    """Test hook: drop all in-flight/known tasks."""
+    """Test hook: descarta todas as tasks em andamento/conhecidas."""
     _tasks.clear()
 
 
@@ -57,10 +58,10 @@ def register(mcp: FastMCP) -> None:
     @audited
     @require_scope(SCOPE_READ)
     def start_cohort_report(condition: str) -> dict:
-        """Start a cohort report over synthetic patients matching a condition.
+        """Inicia um relatório de coorte sobre pacientes sintéticos que correspondem a uma condição.
 
-        Returns a task handle to poll with ``get_cohort_report`` — models the
-        Tasks pattern for a long-running aggregate.
+        Retorna um handle de task para fazer poll com ``get_cohort_report`` —
+        modela o padrão Tasks para uma agregação de longa duração.
         """
         if not isinstance(condition, str) or not condition.strip():
             raise DomainError("condition must be a non-empty string.")
@@ -73,7 +74,7 @@ def register(mcp: FastMCP) -> None:
     @audited
     @require_scope(SCOPE_READ)
     def get_cohort_report(task_id: str) -> dict:
-        """Poll a cohort-report task. Status is one of the protocol's task states."""
+        """Faz poll de uma task de relatório de coorte. O status é um dos estados de task do protocolo."""
         future = _tasks.get(task_id)
         if future is None:
             raise DomainError(f"Unknown task_id {task_id!r}.")
@@ -81,6 +82,6 @@ def register(mcp: FastMCP) -> None:
             return {"task_id": task_id, "status": TASK_STATUS_WORKING}
         try:
             result = future.result()
-        except Exception as exc:  # noqa: BLE001 — surface a clean, typed failure
+        except Exception as exc:  # noqa: BLE001 — expõe uma falha limpa e tipada
             return {"task_id": task_id, "status": TASK_STATUS_FAILED, "error_type": type(exc).__name__}
         return {"task_id": task_id, "status": TASK_STATUS_COMPLETED, "result": result}

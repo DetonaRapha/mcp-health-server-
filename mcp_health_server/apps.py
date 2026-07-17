@@ -1,17 +1,17 @@
-"""Server-rendered confirmation UI (MCP App precursor).
+"""UI de confirmação renderizada no servidor (precursor de MCP App).
 
-v2 concept. The 2026-07-28 spec adds **MCP Apps**: server-rendered UIs the host
-displays in a sandboxed iframe. SDK 1.28 has no native App type yet, so this
-exposes the same idea as far as the stable SDK allows — an HTML fragment served
-as a resource (``ui://appointment/confirm/{patient_id}``) that a host could render
-to confirm the consequential ``book_appointment`` write.
+Conceito v2. A spec 2026-07-28 adiciona os **MCP Apps**: UIs renderizadas no
+servidor que o host exibe em um iframe em sandbox. O SDK 1.28 ainda não tem um
+tipo App nativo, então isto expõe a mesma ideia até onde o SDK estável permite —
+um fragmento HTML servido como um resource (``ui://appointment/confirm/{patient_id}``)
+que um host poderia renderizar para confirmar a escrita consequente ``book_appointment``.
 
-Two deliberate constraints:
-* The fragment is **PII-free** — it references the patient by id only, never the
-  name or DOB — so nothing sensitive rides in the (audited) resource payload.
-* It is a *precursor*: the genuine interactive human-in-the-loop path available
-  today is elicitation (``Context.elicit``); native server-rendered Apps arrive
-  with the SDK v2 migration.
+Duas restrições deliberadas:
+* O fragmento é **livre de PII** — ele referencia o paciente apenas pelo id, nunca
+  o nome ou a DOB — para que nada sensível trafegue no payload (auditado) do resource.
+* É um *precursor*: o caminho interativo genuíno de human-in-the-loop disponível
+  hoje é a elicitation (``Context.elicit``); os Apps nativos renderizados no
+  servidor chegam com a migração para o SDK v2.
 """
 
 from __future__ import annotations
@@ -41,6 +41,6 @@ def register(mcp: FastMCP) -> None:
     @audited
     @require_scope(SCOPE_READ)
     def appointment_confirm_ui(patient_id: str) -> str:
-        """A PII-free HTML confirmation card for a consequential booking."""
+        """Um card de confirmação HTML livre de PII para um agendamento consequente."""
         pid = validate_patient_id(patient_id)
         return _CONFIRM_HTML.format(patient_id=pid)

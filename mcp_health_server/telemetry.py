@@ -1,16 +1,17 @@
-"""Observability: one OpenTelemetry span per tool call, with PII-safe attributes.
+"""Observabilidade: um span do OpenTelemetry por chamada de tool, com atributos PII-safe.
 
-Production agent observability means structured tracing across tool invocations.
-``@traced`` opens a span per call and records only non-sensitive attributes —
-tool name, required scope, outcome, latency. It never records arguments or
-results, so PII cannot leak into the telemetry backend (the same discipline the
-audit log applies). The span's ``outcome`` mirrors the audit line, so a trace and
-its log entry tell the same story.
+Observabilidade de agentes em produção significa tracing estruturado através das
+invocações de tools. ``@traced`` abre um span por chamada e registra apenas
+atributos não sensíveis — nome da tool, scope obrigatório, outcome, latência. Ele
+nunca registra argumentos ou resultados, então PII não pode vazar para o backend
+de telemetria (a mesma disciplina que o audit log aplica). O ``outcome`` do span
+espelha a linha de auditoria, então um trace e sua entrada de log contam a mesma
+história.
 
-Exporter selection is env-driven:
-* ``MCP_OTEL_EXPORTER=console`` — print spans to stderr (dev default when tracing on).
-* ``MCP_OTEL_EXPORTER=otlp`` — export via OTLP (endpoint from standard OTEL_* vars).
-* unset / ``none`` — no-op tracer (zero overhead, default).
+A seleção do exporter é dirigida por env:
+* ``MCP_OTEL_EXPORTER=console`` — imprime spans no stderr (padrão de dev com tracing ligado).
+* ``MCP_OTEL_EXPORTER=otlp`` — exporta via OTLP (endpoint das vars OTEL_* padrão).
+* não definido / ``none`` — tracer no-op (overhead zero, padrão).
 """
 
 from __future__ import annotations
@@ -35,13 +36,13 @@ from opentelemetry.trace import Status, StatusCode
 _CONFIGURED = False
 _SERVICE_NAME = "mcp-health-server"
 
-# Module-owned provider so we don't depend on OpenTelemetry's global (which can
-# only be set once per process — awkward for tests). ``_tracer`` prefers it.
+# Provider próprio do módulo para não dependermos do global do OpenTelemetry (que
+# só pode ser definido uma vez por processo — inconveniente para testes). ``_tracer`` o prefere.
 _provider: TracerProvider | None = None
 
 
 def configure_tracing() -> None:
-    """Install a tracer provider based on ``MCP_OTEL_EXPORTER`` (idempotent)."""
+    """Instala um tracer provider com base em ``MCP_OTEL_EXPORTER`` (idempotente)."""
     global _CONFIGURED, _provider
     if _CONFIGURED:
         return
@@ -49,13 +50,13 @@ def configure_tracing() -> None:
 
     exporter = os.environ.get("MCP_OTEL_EXPORTER", "none").strip().lower()
     if exporter in {"", "none"}:
-        return  # leave the default no-op tracer in place
+        return  # deixa o tracer no-op padrão no lugar
 
     provider = TracerProvider(resource=Resource.create({"service.name": _SERVICE_NAME}))
     if exporter == "console":
         provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
     elif exporter == "otlp":
-        # Imported lazily so the OTLP extra is only needed when actually used.
+        # Importado de forma lazy para que o extra OTLP só seja necessário quando de fato usado.
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
         provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
@@ -64,7 +65,7 @@ def configure_tracing() -> None:
 
 
 def install_span_exporter(exporter: SpanExporter) -> None:
-    """Test hook: route spans to ``exporter`` via a fresh module-owned provider."""
+    """Test hook: roteia spans para ``exporter`` via um novo provider próprio do módulo."""
     global _provider, _CONFIGURED
     provider = TracerProvider(resource=Resource.create({"service.name": _SERVICE_NAME}))
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -82,11 +83,11 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 def traced(func: F) -> F:
-    """Wrap a tool in a span recording only PII-safe attributes.
+    """Envolve uma tool em um span registrando apenas atributos PII-safe.
 
-    Composed above ``@audited`` so the span brackets the whole call. Records the
-    tool name, its required scope (if any), outcome, and latency — never the
-    arguments or the result.
+    Composto acima de ``@audited`` para que o span envolva a chamada inteira.
+    Registra o nome da tool, seu scope obrigatório (se houver), outcome e
+    latência — nunca os argumentos ou o resultado.
     """
 
     @wraps(func)
@@ -100,7 +101,7 @@ def traced(func: F) -> F:
                 span.set_attribute("mcp.tool.required_scope", required_scope)
             try:
                 result = func(*args, **kwargs)
-            except Exception as exc:  # noqa: BLE001 — record type only, never message/PII
+            except Exception as exc:  # noqa: BLE001 — registra apenas o tipo, nunca mensagem/PII
                 span.set_attribute("mcp.tool.outcome", "rejected_or_error")
                 span.set_attribute("mcp.error.type", type(exc).__name__)
                 span.set_status(Status(StatusCode.ERROR))

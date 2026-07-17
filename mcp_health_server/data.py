@@ -1,11 +1,11 @@
-"""Synthetic health data source — the "business logic", isolated from MCP.
+"""Fonte de dados de saúde sintéticos — a "lógica de negócio", isolada do MCP.
 
-Nothing in this module imports MCP. It loads ``data/patients.json`` once and
-exposes pure-ish access functions that return domain models. Swapping this for a
-real FHIR/EHR client later would not touch the tool layer — that separation is
-what keeps the MCP server a thin, portable translator.
+Nada neste módulo importa MCP. Ele carrega ``data/patients.json`` uma vez e
+expõe funções de acesso quase puras que retornam modelos de domínio. Trocar isto
+por um cliente FHIR/EHR real mais tarde não tocaria na camada de tools — essa
+separação é o que mantém o servidor MCP um tradutor enxuto e portável.
 
-The data is 100% fictional. See the notice at the top of the JSON file.
+Os dados são 100% fictícios. Veja o aviso no topo do arquivo JSON.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from .safety import DomainError, get_config
 
 
 class _Store:
-    """In-memory view of the synthetic dataset."""
+    """Visão em memória do dataset sintético."""
 
     def __init__(self, raw: dict) -> None:
         self.patients: dict[str, Patient] = {}
@@ -57,7 +57,7 @@ class _Store:
                 suffix = a["id"].rsplit("-", 1)[-1]
                 if suffix.isdigit():
                     max_apt = max(max_apt, int(suffix))
-        # New appointment ids continue past the highest seeded id.
+        # Novos ids de consulta continuam a partir do maior id semeado.
         self._apt_counter = count(max_apt + 1)
 
     def next_appointment_id(self) -> str:
@@ -77,7 +77,7 @@ def _store() -> _Store:
 
 
 def reset_cache() -> None:
-    """Drop the cached store so a new data path / mutations are re-read. Test hook."""
+    """Descarta o store em cache para que um novo caminho de dados / mutações sejam relidos. Test hook."""
     _store.cache_clear()
 
 
@@ -86,12 +86,12 @@ def _age(birth: date, *, today: date) -> int:
 
 
 # --------------------------------------------------------------------------- #
-# Access functions — pure translation targets for the tool layer
+# Funções de acesso — alvos de tradução puros para a camada de tools
 # --------------------------------------------------------------------------- #
 
 
 def search_patients(query: str, *, today: date) -> list[PatientSummary]:
-    """Case-insensitive match against patient name or any condition label."""
+    """Correspondência case-insensitive contra o nome do paciente ou qualquer rótulo de condição."""
     q = query.strip().lower()
     results: list[PatientSummary] = []
     for p in _store().patients.values():
@@ -113,7 +113,7 @@ def list_appointments(
     from_date: date | None = None,
     to_date: date | None = None,
 ) -> list[Appointment]:
-    get_patient(patient_id)  # raises DomainError if the patient does not exist
+    get_patient(patient_id)  # levanta DomainError se o paciente não existir
     items = _store().appointments.get(patient_id, [])
     if from_date is not None:
         items = [a for a in items if a.when.date() >= from_date]
@@ -134,7 +134,7 @@ def record_observation(
     reference_range: str,
     taken_at: date,
 ) -> LabResult:
-    """Append a lab observation to a patient's record (used by the FHIR write path)."""
+    """Anexa uma observação laboratorial ao registro de um paciente (usado pelo caminho de escrita FHIR)."""
     get_patient(patient_id)
     lab = LabResult(name=name, value=value, reference_range=reference_range, taken_at=taken_at)
     _store().labs.setdefault(patient_id, []).append(lab)

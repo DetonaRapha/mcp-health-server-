@@ -1,20 +1,21 @@
-"""OAuth 2.1 Resource Server support + per-tool scope enforcement.
+"""Suporte a Resource Server OAuth 2.1 + aplicação de scope por tool.
 
-Per the MCP authorization spec, an MCP server is a *Resource Server*: it does not
-authenticate users or mint tokens — it **validates** bearer tokens (signature,
-``exp``, ``iss``, and crucially ``aud`` to prevent token replay across resources,
-RFC 8707) and **enforces scopes** per tool.
+Conforme a spec de autorização do MCP, um servidor MCP é um *Resource Server*:
+ele não autentica usuários nem gera tokens — ele **valida** bearer tokens
+(assinatura, ``exp``, ``iss`` e, crucialmente, ``aud`` para prevenir replay de
+token entre resources, RFC 8707) e **aplica scopes** por tool.
 
-Design rules (from the spec, and from every MCP security guide):
-* Do not hand-roll crypto or token parsing — use a tested library (PyJWT here).
-* Token validation is local (verify the RS256 signature against the issuer's
-  public key). In production, the key comes from the issuer's JWKS endpoint,
-  cached; here a :class:`MockAuthorizationServer` provides it for dev/CI only.
-* Config and keys come from the environment / the AS, never from a tool schema.
+Regras de design (da spec e de todo guia de segurança MCP):
+* Não implemente crypto ou parsing de token à mão — use uma biblioteca testada
+  (PyJWT aqui).
+* A validação de token é local (verifica a assinatura RS256 contra a chave
+  pública do issuer). Em produção, a chave vem do endpoint JWKS do issuer, em
+  cache; aqui um :class:`MockAuthorizationServer` a fornece somente para dev/CI.
+* Config e chaves vêm do ambiente / do AS, nunca de um schema de tool.
 
-Auth is *off by default* so stdio/dev keeps working; it is enabled explicitly
-(``MCP_AUTH_ENABLED=1``), which the HTTP entrypoint does. When enabled,
-:func:`require_scope` gates each tool.
+Auth está *desligada por padrão* para que stdio/dev continue funcionando; ela é
+habilitada explicitamente (``MCP_AUTH_ENABLED=1``), o que o entrypoint HTTP faz.
+Quando habilitada, :func:`require_scope` protege cada tool.
 """
 
 from __future__ import annotations
@@ -43,21 +44,21 @@ from .safety import DomainError
 
 ALGORITHM = "RS256"
 
-# Scopes. Reads need SCOPE_READ; the consequential write needs SCOPE_WRITE.
+# Scopes. Leituras precisam de SCOPE_READ; a escrita consequente precisa de SCOPE_WRITE.
 SCOPE_READ = "patients:read"
 SCOPE_WRITE = "appointments:write"
 
 
 class AuthorizationError(DomainError):
-    """Authn/authz failure — surfaced to the host as a clean error and audited.
+    """Falha de authn/authz — exposta ao host como um erro limpo e auditada.
 
-    Subclasses :class:`DomainError` so the ``@audited`` wrapper logs it as a
-    rejection (never leaking token contents) and re-raises it cleanly.
+    Subclasse de :class:`DomainError` para que o wrapper ``@audited`` a registre
+    como uma rejeição (nunca vazando o conteúdo do token) e a relance de forma limpa.
     """
 
 
 # --------------------------------------------------------------------------- #
-# Configuration
+# Configuração
 # --------------------------------------------------------------------------- #
 
 
@@ -86,17 +87,17 @@ def auth_enabled() -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Mock Authorization Server — DEV / CI ONLY
+# Mock Authorization Server — SOMENTE DEV / CI
 # --------------------------------------------------------------------------- #
 
 
 class MockAuthorizationServer:
-    """Issues RS256 tokens and exposes the verifying public key.
+    """Emite tokens RS256 e expõe a chave pública de verificação.
 
-    DEV/TEST ONLY. A real deployment does not use this — it points the verifier
-    at a real Authorization Server's JWKS (Auth0, Keycloak, WorkOS, Entra, ...).
-    This exists so the auth path is exercised in CI without external services and
-    without committing any secret.
+    SOMENTE DEV/TEST. Uma implantação real não usa isto — ela aponta o verifier
+    para o JWKS de um Authorization Server real (Auth0, Keycloak, WorkOS, Entra, ...).
+    Isto existe para que o caminho de auth seja exercitado no CI sem serviços
+    externos e sem commitar nenhum segredo.
     """
 
     def __init__(self, issuer: str, audience: str) -> None:
@@ -139,12 +140,12 @@ class MockAuthorizationServer:
 
 
 # --------------------------------------------------------------------------- #
-# Token verifier — the Resource Server's job
+# Token verifier — o trabalho do Resource Server
 # --------------------------------------------------------------------------- #
 
 
 class JWTVerifier(TokenVerifier):
-    """Validates RS256 bearer tokens locally against the issuer's public key."""
+    """Valida bearer tokens RS256 localmente contra a chave pública do issuer."""
 
     def __init__(self, issuer: str, audience: str, public_key_pem: bytes) -> None:
         self._issuer = issuer
@@ -157,7 +158,7 @@ class JWTVerifier(TokenVerifier):
                 token,
                 self._public_key,
                 algorithms=[ALGORITHM],
-                audience=self._audience,   # RFC 8707: reject tokens minted for another resource
+                audience=self._audience,   # RFC 8707: rejeita tokens gerados para outro resource
                 issuer=self._issuer,
                 options={"require": ["exp", "iss", "aud"]},
             )
@@ -176,10 +177,11 @@ class JWTVerifier(TokenVerifier):
 
 
 def build_auth_settings(cfg: AuthConfig) -> AuthSettings:
-    """AuthSettings for Resource Server mode.
+    """AuthSettings para o modo Resource Server.
 
-    ``required_scopes=[]`` means "a valid token is required, but authorization is
-    decided per tool" — the separation of concerns the spec calls for.
+    ``required_scopes=[]`` significa "um token válido é obrigatório, mas a
+    autorização é decidida por tool" — a separação de responsabilidades que a
+    spec exige.
     """
     return AuthSettings(
         issuer_url=AnyHttpUrl(cfg.issuer),
@@ -189,18 +191,19 @@ def build_auth_settings(cfg: AuthConfig) -> AuthSettings:
 
 
 # --------------------------------------------------------------------------- #
-# Per-tool scope enforcement
+# Aplicação de scope por tool
 # --------------------------------------------------------------------------- #
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 
 def require_scope(scope: str) -> Callable[[F], F]:
-    """Gate a tool on a required OAuth scope.
+    """Protege uma tool com um scope OAuth obrigatório.
 
-    No-op when auth is disabled (stdio/dev). When enabled, a missing token or a
-    token lacking ``scope`` raises :class:`AuthorizationError`, which ``@audited``
-    logs as a rejection. Applied beneath ``@audited`` so the denial is audited.
+    No-op quando a auth está desabilitada (stdio/dev). Quando habilitada, um token
+    ausente ou um token sem ``scope`` levanta :class:`AuthorizationError`, que
+    ``@audited`` registra como uma rejeição. Aplicado abaixo de ``@audited`` para
+    que a negação seja auditada.
     """
 
     def decorator(func: F) -> F:
@@ -224,10 +227,10 @@ def require_scope(scope: str) -> Callable[[F], F]:
 
 @contextlib.contextmanager
 def principal(scopes: Sequence[str], *, subject: str = "test-user") -> Iterator[None]:
-    """Test helper: run the block as an authenticated principal with ``scopes``.
+    """Helper de teste: executa o bloco como um principal autenticado com ``scopes``.
 
-    Sets the SDK's auth context var (the same one the HTTP middleware populates),
-    so :func:`require_scope` sees the token without a real transport.
+    Define a auth context var do SDK (a mesma que o middleware HTTP popula), para
+    que :func:`require_scope` veja o token sem um transporte real.
     """
     token = AccessToken(
         token="in-memory-test-token",

@@ -1,45 +1,96 @@
 # mcp-health-server
 
-A Claude-compatible **Model Context Protocol (MCP)** server that exposes health-domain
-tools over **100% synthetic data**, built with the rigor a regulated domain demands:
-strict server-side validation, a PII-redacting audit log, OAuth 2.1 authorization with
-per-tool scopes, PII-safe tracing, and a **red-team suite that proves the guardrails
-hold in CI**. The write action is marked consequential so the host confirms with the user.
+Um servidor **Model Context Protocol (MCP)** compatível com Claude que expõe ferramentas
+de um domínio de saúde sobre **dados 100% sintéticos**, construído com o rigor que um
+domínio regulado exige: validação estrita no servidor, log de auditoria com PII redigida,
+autorização OAuth 2.1 com escopos por ferramenta, tracing sem PII e uma **suíte de
+red-team que prova, no CI, que os guardrails seguram**. A ação de escrita é marcada como
+consequente, então o host pede confirmação ao usuário.
 
-Any MCP host — Claude Desktop, Cursor, VS Code, the MCP Inspector — connects over stdio
-(local) or Streamable HTTP (remote).
+Qualquer host MCP — Claude Desktop, Cursor, VS Code, o MCP Inspector — conecta por stdio
+(local) ou Streamable HTTP (remoto).
 
-## Why this exists
+## O que isto faz, na prática
 
-MCP is the standard way to connect AI models to real systems (donated to the Linux
-Foundation in Dec 2025; ~10k public servers; production adoption across major hosts).
-The scarce skill is doing it *well* where mistakes matter. This repo demonstrates MCP
-integration with the discipline of a regulated domain — **security is a primitive, and it
-is verifiable, not merely asserted**. It targets exactly where the ecosystem is weak:
-only ~8.5% of MCP servers implement the mandatory OAuth 2.1, and tool-poisoning success
-rates exceed 60% in the wild.
+Um modelo de IA, sozinho, consegue *falar* sobre um paciente, mas não consegue *consultá-lo*,
+*verificar uma consulta* nem *marcar uma* — ele não tem mãos. **O MCP é o padrão que dá
+mãos a ele:** um servidor publica um conjunto de ações tipadas ("tools"), e qualquer
+assistente compatível com MCP (Claude Desktop, Cursor, VS Code…) consegue descobrir e
+chamar essas ações no meio de uma conversa.
 
-It is the operational half of a two-repo story: `llm-guardrails` governs *what the model
-says*; this server governs *what the model can execute through tools*.
+Este projeto é esse servidor, para uma pequena fatia de **saúde** — rodando inteiramente
+sobre **dados de paciente inventados**. Ele permite que um assistente:
 
-## What it exposes
+- **encontre pacientes** por nome ou condição, e puxe seus dados demográficos, condições,
+  consultas e resultados de exames;
+- **marque uma consulta** ou **registre um resultado de exame** — ações que *alteram dados*;
+- **rode um relatório de coorte** (ex.: "quantos pacientes têm diabetes?") como tarefa em
+  segundo plano;
+- leia o prontuário de um paciente em **FHIR**, o formato que sistemas hospitalares reais
+  trocam entre si.
 
-| Primitive | Name | Scope | Notes |
-|-----------|------|-------|-------|
-| Tool (read) | `search_patients(query)` | `patients:read` | Search by name or condition. |
-| Tool (read) | `get_patient(patient_id)` | `patients:read` | Demographics and conditions. |
-| Tool (read) | `list_appointments(patient_id, from_date?, to_date?)` | `patients:read` | Optional date range. |
-| Tool (**write**) | `book_appointment(patient_id, when, reason)` | `appointments:write` | **Consequential** — host confirms. |
-| Tool (**write**) | `record_lab_observation(patient_id, loinc_code, value, …)` | `appointments:write` | **Consequential**; LOINC code validated (anti-hallucination). |
-| Tool (task) | `start_cohort_report(condition)` / `get_cohort_report(task_id)` | `patients:read` | Long-running aggregate via the Tasks pattern. |
-| Resource | `patient://{patient_id}/labs` | `patients:read` | Lab results, addressable by URI. |
-| Resource | `fhir://Patient/{patient_id}` | `patients:read` | Patient as a FHIR R4 Bundle. |
-| Resource | `ui://appointment/confirm/{patient_id}` | `patients:read` | Server-rendered HTML confirmation (MCP App precursor). |
-| Prompt | `triage_summary(patient_id)` | — | Structured triage template. |
+O ponto não são as funcionalidades de saúde em si — é *o quão cuidadosamente* elas são
+feitas. Num campo regulado, deixar uma IA tocar em registros só é aceitável com guardrails,
+então toda ação aqui é **validada antes de rodar**, **registrada com os dados pessoais
+mascarados**, **protegida por login e permissões** e — para tudo que altera dados —
+**sinalizada para que o app pergunte ao humano "tem certeza?" antes**. E esses guardrails
+não são só afirmados: uma suíte de ataques simulados roda a cada build e **reprova o build
+se algum guardrail vazar**.
 
-## Run it
+### Um passo a passo concreto
 
-### Local (stdio, no auth) — one command
+Um clínico, conversando com o Claude, pede: *"Resuma o paciente p-001 para triagem."*
+
+1. O Claude escolhe o prompt `triage_summary`, que o instrui a reunir os dados do jeito certo.
+2. Ele chama `get_patient("p-001")` e `list_appointments("p-001")`, e lê o resource de
+   exames. Nos bastidores, o servidor confere que o token de acesso do chamador tem a
+   permissão `patients:read`, valida cada argumento e escreve uma linha de auditoria com o
+   nome mascarado (`R****** A******`).
+3. O Claude redige o resumo e sugere marcar um retorno. Marcar é uma *escrita*, então é
+   marcada como consequente — o host **pausa e pede a confirmação do clínico** antes de o
+   `book_appointment` realmente rodar (e essa chamada exige a permissão mais forte,
+   `appointments:write`).
+4. Se o Claude tentasse registrar um exame com um código médico inventado, o servidor
+   **rejeitaria** em vez de deixar um código fabricado entrar no registro.
+
+### Para quem é
+
+É uma **implementação de portfólio / referência**: uma demonstração de como construir uma
+integração MCP do jeito que um domínio regulado (saúde, finanças, jurídico) de fato exige —
+segurança, auditabilidade e supervisão humana tratadas como primeira classe, não como
+remendo. **Não** é um produto médico e nunca deve ser apontado para dados de paciente reais.
+
+## Por que este projeto existe
+
+O MCP é a forma padrão de conectar modelos de IA a sistemas reais (doado à Linux Foundation
+em dez/2025; ~10 mil servidores públicos; adoção em produção pelos principais hosts). A
+habilidade escassa é fazer isso *bem* onde o erro custa caro. Este repo demonstra integração
+MCP com a disciplina de um domínio regulado — **segurança como primitiva, e verificável, não
+apenas afirmada**. Ele mira exatamente onde o ecossistema é fraco: só ~8,5% dos servidores
+MCP implementam o OAuth 2.1 obrigatório, e ataques de tool poisoning têm mais de 60% de
+sucesso mundo afora.
+
+É a metade operacional de uma história de dois repos: `llm-guardrails` governa *o que o
+modelo responde*; este servidor governa *o que o modelo pode executar via ferramentas*.
+
+## O que ele expõe
+
+| Primitiva | Nome | Escopo | Observação |
+|-----------|------|--------|------------|
+| Tool (leitura) | `search_patients(query)` | `patients:read` | Busca por nome ou condição. |
+| Tool (leitura) | `get_patient(patient_id)` | `patients:read` | Dados demográficos e condições. |
+| Tool (leitura) | `list_appointments(patient_id, from_date?, to_date?)` | `patients:read` | Faixa de data opcional. |
+| Tool (**escrita**) | `book_appointment(patient_id, when, reason)` | `appointments:write` | **Consequente** — o host confirma. |
+| Tool (**escrita**) | `record_lab_observation(patient_id, loinc_code, value, …)` | `appointments:write` | **Consequente**; código LOINC validado (anti-alucinação). |
+| Tool (task) | `start_cohort_report(condition)` / `get_cohort_report(task_id)` | `patients:read` | Agregado de longa duração via o padrão Tasks. |
+| Resource | `patient://{patient_id}/labs` | `patients:read` | Resultados de exames, endereçáveis por URI. |
+| Resource | `fhir://Patient/{patient_id}` | `patients:read` | Paciente como Bundle FHIR R4. |
+| Resource | `ui://appointment/confirm/{patient_id}` | `patients:read` | Confirmação HTML renderizada no servidor (precursor de MCP App). |
+| Prompt | `triage_summary(patient_id)` | — | Template estruturado de triagem. |
+
+## Como rodar
+
+### Local (stdio, sem auth) — um comando
 
 ```bash
 python -m venv .venv
@@ -48,14 +99,15 @@ pip install -e ".[dev]"
 python -m mcp_health_server
 ```
 
-### Remote (Streamable HTTP, OAuth 2.1 Resource Server)
+### Remoto (Streamable HTTP, Resource Server OAuth 2.1)
 
 ```bash
 MCP_TRANSPORT=streamable-http python -m mcp_health_server
 ```
 
-It prints a dev bearer token (read+write) to stderr and serves at `http://127.0.0.1:8000/mcp`.
-Requests without a valid token get **HTTP 401**. Enforcement is real:
+Ele imprime um token bearer de dev (leitura+escrita) no stderr e serve em
+`http://127.0.0.1:8000/mcp`. Requisições sem token válido recebem **HTTP 401**. O enforce
+é real:
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:8000/mcp \
@@ -64,44 +116,44 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:8000/mcp \
 # => 401
 ```
 
-Configuration comes from the environment:
+A configuração vem do ambiente:
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `MCP_TRANSPORT` | `stdio` | `stdio` or `streamable-http`. |
-| `MCP_HTTP_HOST` / `MCP_HTTP_PORT` | `127.0.0.1` / `8000` | HTTP bind address. |
-| `MCP_HEALTH_DATA_PATH` | bundled `data/patients.json` | Synthetic dataset path. |
-| `MCP_HEALTH_LOG_LEVEL` | `INFO` | Audit log verbosity. |
-| `MCP_AUTH_ENABLED` | off | Enable per-tool scope enforcement (HTTP sets it automatically). |
-| `MCP_AUTH_ISSUER` / `MCP_AUTH_AUDIENCE` | dev defaults | OAuth issuer and audience (RFC 8707). |
-| `MCP_OTEL_EXPORTER` | `none` | `none` \| `console` \| `otlp` tracing exporter. |
+| Variável | Padrão | Finalidade |
+|----------|--------|------------|
+| `MCP_TRANSPORT` | `stdio` | `stdio` ou `streamable-http`. |
+| `MCP_HTTP_HOST` / `MCP_HTTP_PORT` | `127.0.0.1` / `8000` | Endereço de bind do HTTP. |
+| `MCP_HEALTH_DATA_PATH` | `data/patients.json` embutido | Caminho do dataset sintético. |
+| `MCP_HEALTH_LOG_LEVEL` | `INFO` | Verbosidade do log de auditoria. |
+| `MCP_AUTH_ENABLED` | desligado | Liga o enforce de escopo por ferramenta (o HTTP liga sozinho). |
+| `MCP_AUTH_ISSUER` / `MCP_AUTH_AUDIENCE` | padrões de dev | Issuer e audience do OAuth (RFC 8707). |
+| `MCP_OTEL_EXPORTER` | `none` | Exportador de tracing: `none` \| `console` \| `otlp`. |
 
-> The dev token is minted by an in-process **mock Authorization Server** for dev/CI only.
-> A real deployment verifies against a real issuer's JWKS and never uses the mock.
+> O token de dev é emitido por um **Authorization Server mock** em processo, só para
+> dev/CI. Um deploy real valida contra o JWKS de um issuer real e nunca usa o mock.
 
-Extra HTTP knobs: `MCP_HTTP_STATELESS=1` runs the server without a session
-(`Mcp-Session-Id`), so it can sit behind a plain round-robin load balancer — the
-direction the 2026-07-28 spec formalises.
+Ajustes extras de HTTP: `MCP_HTTP_STATELESS=1` roda o servidor sem sessão
+(`Mcp-Session-Id`), para que ele possa ficar atrás de um load balancer round-robin simples
+— a direção que a spec de 2026-07-28 formaliza.
 
 ### Container (Docker)
 
 ```bash
-docker compose up                          # server only, console tracing
-docker compose --profile observability up  # server + OTLP collector
+docker compose up                          # só o servidor, tracing no console
+docker compose --profile observability up  # servidor + coletor OTLP
 ```
 
-The container runs the Streamable HTTP transport as a non-root user and prints a dev
-bearer token to its logs on startup.
+O container roda o transporte Streamable HTTP como usuário não-root e imprime um token
+bearer de dev nos logs ao subir.
 
-### Connect from the MCP Inspector
+### Conectar pelo MCP Inspector
 
 ```bash
 npx @modelcontextprotocol/inspector python -m mcp_health_server
 ```
 
-### Connect from Claude Desktop
+### Conectar pelo Claude Desktop
 
-Add to `claude_desktop_config.json` (Settings → Developer → Edit Config):
+Adicione em `claude_desktop_config.json` (Settings → Developer → Edit Config):
 
 ```json
 {
@@ -111,89 +163,91 @@ Add to `claude_desktop_config.json` (Settings → Developer → Edit Config):
 }
 ```
 
-Because `book_appointment` is annotated consequential, the host prompts for confirmation.
+Como `book_appointment` é anotada como consequente, o host pede confirmação.
 
-## Security & compliance — the core of this repo
+## Segurança e conformidade — o coração do repo
 
-1. **Strict server-side validation on every tool.** The model is never trusted. Unknown
-   patients, malformed ids, injection strings, and inverted date ranges return clean
-   errors, not raw exceptions.
-2. **Audit log of every invocation, PII redacted.** Names masked (`Rafaela Almeida` →
-   `R****** A******`), DOB → `****-**-**`. Logs go to **stderr** (stdout is the JSON-RPC
-   channel under stdio).
-3. **Config and secrets come only from the environment** — never a tool schema or resource
-   payload. `.env` is git-ignored.
-4. **The write tool is consequential** (`destructiveHint=True`) — human-in-the-loop.
-5. **OAuth 2.1 as Resource Server.** Local RS256 JWT validation, `aud` enforcement
-   (RFC 8707, anti-replay), and **per-tool scopes** (`patients:read` vs
-   `appointments:write`) — least privilege in both directions.
-6. **PII-safe observability.** One OpenTelemetry span per call recording tool name, scope,
-   outcome, and latency — never arguments or results.
-7. **Verifiable guardrails.** A red-team suite (`tests/redteam/`) reproduces tool poisoning,
-   authorization escalation, and PII-leak attacks. It runs as a **CI gate**: any successful
-   attack fails the build. A meta-test proves the gate is load-bearing (loosening it flips
-   the outcome).
+1. **Validação estrita no servidor em toda ferramenta.** O modelo nunca é confiável.
+   Paciente inexistente, id malformado, strings de injeção e faixa de data invertida
+   devolvem erros limpos, não exceções cruas.
+2. **Log de auditoria de toda invocação, com PII redigida.** Nomes mascarados
+   (`Rafaela Almeida` → `R****** A******`), data de nascimento → `****-**-**`. Os logs vão
+   para o **stderr** (o stdout é o canal JSON-RPC no stdio).
+3. **Config e segredos vêm só do ambiente** — nunca de schema de tool ou payload de
+   resource. `.env` está no gitignore.
+4. **A ferramenta de escrita é consequente** (`destructiveHint=True`) — human-in-the-loop.
+5. **OAuth 2.1 como Resource Server.** Validação local de JWT RS256, enforce de `aud`
+   (RFC 8707, anti-replay) e **escopos por ferramenta** (`patients:read` vs
+   `appointments:write`) — menor privilégio nos dois sentidos.
+6. **Observabilidade sem PII.** Um span OpenTelemetry por chamada, registrando nome da
+   ferramenta, escopo, resultado e latência — nunca argumentos ou resultado.
+7. **Guardrails verificáveis.** Uma suíte de red-team (`tests/redteam/`) reproduz tool
+   poisoning, escalação de autorização e vazamento de PII. Ela roda como **gate no CI**:
+   qualquer ataque bem-sucedido reprova o build. Um meta-teste prova que o gate é
+   load-bearing (afrouxá-lo inverte o resultado).
 
-### Mapping to ISO/IEC 42001 + HIPAA + LGPD
+### Mapeamento para ISO/IEC 42001 + HIPAA + LGPD
 
-| Control | How this server addresses it |
+| Controle | Como o servidor atende |
 |---|---|
-| **HIPAA — audit trail of every PHI access** | `@audited` + a span per call, PII redacted. |
-| **HIPAA — minimum necessary** | Per-tool scopes; lean `PatientSummary`. |
-| **HIPAA — access control** | OAuth 2.1 Resource Server, per-tool scope enforcement. |
-| **LGPD — minimization & purpose** | PII redaction in logs/traces; synthetic data; scope per tool. |
-| **ISO/IEC 42001 — human oversight (A.9.2)** | Consequential write (HITL) + red-team gate. |
-| **ISO/IEC 42001 — system security (B.6.2.6)** | Auth, strict validation, poisoning resistance verified in CI. |
+| **HIPAA — trilha de auditoria de todo acesso a PHI** | `@audited` + um span por chamada, com PII redigida. |
+| **HIPAA — mínimo necessário** | Escopos por ferramenta; `PatientSummary` enxuto. |
+| **HIPAA — controle de acesso** | Resource Server OAuth 2.1, enforce de escopo por ferramenta. |
+| **LGPD — minimização e finalidade** | Redação de PII em logs/traces; dado sintético; escopo por ferramenta. |
+| **ISO/IEC 42001 — supervisão humana (A.9.2)** | Escrita consequente (HITL) + gate de red-team. |
+| **ISO/IEC 42001 — segurança do sistema (B.6.2.6)** | Auth, validação estrita, resistência a poisoning verificada no CI. |
 
-> Illustrative of an ISO/IEC 42001-aligned control posture, not a formal certification.
-> There is no "HIPAA-certified AI" — compliance is an operational state, which is exactly
-> what the controls around the model demonstrate.
+> Ilustrativo de uma postura de controles alinhada à ISO/IEC 42001, não uma certificação
+> formal. Não existe "IA certificada HIPAA" — conformidade é um estado operacional, que é
+> exatamente o que os controles em volta do modelo demonstram.
 
-## Synthetic data
+## Dados sintéticos
 
-Everything under [`data/patients.json`](data/patients.json) is invented — six fictional
-patients with appointments and labs. **Never** point `MCP_HEALTH_DATA_PATH` at real data.
+Tudo em [`data/patients.json`](data/patients.json) é inventado — seis pacientes fictícios
+com consultas e exames. **Nunca** aponte `MCP_HEALTH_DATA_PATH` para dados reais.
 
-## Tests
+## Testes
 
 ```bash
-pytest                    # full suite (in-memory client, no transport)
-pytest tests/redteam -q   # the adversarial security gate on its own
+pytest                    # suíte completa (cliente in-memory, sem transporte)
+pytest tests/redteam -q   # o gate de segurança adversarial, isolado
 ```
 
-Coverage: the server responds with the expected models; bad input is rejected rather than
-crashing; the audit line masks the patient name; token verification rejects wrong-audience,
-expired, wrong-issuer, and forged tokens; per-tool scopes enforce least privilege; and the
-red-team suite proves poisoning/escalation/PII-leak resistance.
+Cobertura: o servidor responde com os modelos esperados; entrada ruim é rejeitada em vez de
+quebrar; a linha de auditoria mascara o nome do paciente; a verificação de token rejeita
+audience errada, token expirado, issuer errado e token forjado; escopos por ferramenta
+impõem menor privilégio; e a suíte de red-team prova resistência a poisoning/escalação/
+vazamento de PII.
 
-## Design decisions & trade-offs
+## Decisões de design e trade-offs
 
-See [DESIGN.md](DESIGN.md) — thin layer, transports, security as a *verifiable* primitive,
-Resource-Server auth, synthetic-only data, and the SDK version decision, each with its
-"why not the other way".
+Veja [DESIGN.md](DESIGN.md) — camada fina, transportes, segurança como primitiva
+*verificável*, auth de Resource Server, dado só sintético e a decisão de versão do SDK,
+cada uma com o seu "por que não do outro jeito".
 
-## FHIR realism & v2 concepts (built)
+## Realismo FHIR e conceitos de v2 (construídos)
 
-- **FHIR (v1.5):** `fhir://Patient/{id}` returns a FHIR R4 Bundle (Patient + Conditions +
-  Observations). The write tool `record_lab_observation` **validates the LOINC code against
-  a known set and rejects fabricated codes** — the named anti-hallucination control for
-  clinical AI. Data stays synthetic; `data.py` is the one seam a real FHIR/EHR backend
-  would replace.
-- **Stateless HTTP (v2):** `MCP_HTTP_STATELESS=1` — real, using the SDK's `stateless_http`.
-- **Tasks pattern (v2):** `start_cohort_report` returns a handle; `get_cohort_report` polls
-  it, using the protocol's own status strings (`working`/`completed`/…).
-- **MCP App precursor (v2):** `ui://appointment/confirm/{id}` serves a PII-free HTML
-  confirmation card.
+- **FHIR (v1.5):** `fhir://Patient/{id}` retorna um Bundle FHIR R4 (Patient + Conditions +
+  Observations). A ferramenta de escrita `record_lab_observation` **valida o código LOINC
+  contra um conjunto conhecido e rejeita códigos fabricados** — o controle nomeado de
+  anti-alucinação para IA clínica. O dado continua sintético; `data.py` é a única costura
+  que um backend FHIR/EHR real substituiria.
+- **HTTP stateless (v2):** `MCP_HTTP_STATELESS=1` — real, usando o `stateless_http` do SDK.
+- **Padrão Tasks (v2):** `start_cohort_report` devolve um handle; `get_cohort_report` faz o
+  poll, usando as próprias strings de status do protocolo (`working`/`completed`/…).
+- **Precursor de MCP App (v2):** `ui://appointment/confirm/{id}` serve um card HTML de
+  confirmação sem PII.
 
-> **Honesty note on v2.** The MCP SDK v2 (native stateless core, native Tasks tools,
-> native server-rendered MCP Apps) is not published yet — this repo pins the stable v1
-> line (`mcp>=1.28,<2.0`). The items above implement the v2 *concepts* on the stable SDK;
-> the native migration is a deliberate future step once v2 ships. Today's supported
-> interactive HITL path is elicitation (`Context.elicit`); native Apps arrive with v2.
+> **Nota de honestidade sobre a v2.** O SDK v2 do MCP (núcleo stateless nativo, Tasks
+> nativas, MCP Apps renderizadas no servidor) ainda não foi publicado — este repo fixa a
+> linha estável v1 (`mcp>=1.28,<2.0`). Os itens acima implementam os *conceitos* da v2
+> sobre o SDK estável; a migração nativa é um passo futuro deliberado, quando a v2 sair. O
+> caminho de HITL interativo suportado hoje é elicitation (`Context.elicit`); Apps nativas
+> chegam com a v2.
 
-## Still future (not built)
+## Ainda futuro (não construído)
 
-- Migrate to the MCP SDK v2 once published (native stateless core / Tasks / MCP Apps).
-- Multi-agent (agent-to-agent) coordination.
-- Real FHIR/EHR backend behind the `data.py` seam; real external Authorization Server / IdP;
-  JWKS fetched+cached from a live issuer instead of the in-process mock.
+- Migrar para o SDK v2 do MCP quando publicado (núcleo stateless / Tasks / MCP Apps nativos).
+- Coordenação multi-agente (agent-to-agent).
+- Backend FHIR/EHR real atrás da costura `data.py`; Authorization Server / IdP externo real;
+  JWKS buscado+cacheado de um issuer ao vivo em vez do mock em processo.

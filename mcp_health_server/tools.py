@@ -1,16 +1,16 @@
-"""Tools — the thin translation layer.
+"""Tools — a camada de tradução enxuta.
 
-Each tool: enforce the required OAuth scope (when auth is on), validate the
-incoming arguments against the domain contract (never trusting the model),
-delegate to ``data.py``, and return a typed model.
+Cada tool: aplica o scope OAuth obrigatório (quando a auth está ligada), valida
+os argumentos recebidos contra o contrato de domínio (nunca confiando no modelo),
+delega para ``data.py`` e retorna um modelo tipado.
 
-Decorator stack (top-to-bottom = outer-to-inner):
-    @mcp.tool          derives the JSON schema from the preserved signature
-    @traced            opens a PII-safe span around the whole call
-    @audited           logs the call/outcome with PII redacted (audits denials)
-    @require_scope     authorizes before anything else runs
-The ``__required_scope__`` marker set by ``require_scope`` propagates up the
-``functools.wraps`` chain so ``traced`` can record it on the span.
+Pilha de decorators (de cima para baixo = de fora para dentro):
+    @mcp.tool          deriva o schema JSON da assinatura preservada
+    @traced            abre um span PII-safe em torno da chamada inteira
+    @audited           loga a chamada/outcome com PII redigida (audita negações)
+    @require_scope     autoriza antes que qualquer outra coisa rode
+O marcador ``__required_scope__`` definido por ``require_scope`` propaga-se pela
+cadeia de ``functools.wraps`` para que ``traced`` possa registrá-lo no span.
 """
 
 from __future__ import annotations
@@ -30,14 +30,14 @@ from .telemetry import traced
 
 
 def register(mcp: FastMCP) -> None:
-    """Register all tools on the given FastMCP instance."""
+    """Registra todas as tools na instância FastMCP fornecida."""
 
     @mcp.tool(annotations=ToolAnnotations(title="Search patients", readOnlyHint=True))
     @traced
     @audited
     @require_scope(SCOPE_READ)
     def search_patients(query: str) -> list[PatientSummary]:
-        """Search synthetic patients by name or condition. Returns lean summaries."""
+        """Busca pacientes sintéticos por nome ou condição. Retorna resumos enxutos."""
         if not isinstance(query, str):
             raise DomainError("query must be a string.")
         return data.search_patients(query, today=date.today())
@@ -47,7 +47,7 @@ def register(mcp: FastMCP) -> None:
     @audited
     @require_scope(SCOPE_READ)
     def get_patient(patient_id: str) -> Patient:
-        """Return a patient's demographics and conditions by id."""
+        """Retorna os dados demográficos e condições de um paciente pelo id."""
         pid = validate_patient_id(patient_id)
         return data.get_patient(pid)
 
@@ -60,7 +60,7 @@ def register(mcp: FastMCP) -> None:
         from_date: date | None = None,
         to_date: date | None = None,
     ) -> list[Appointment]:
-        """List appointments for a patient, optionally filtered to a date range."""
+        """Lista as consultas de um paciente, opcionalmente filtradas por um intervalo de datas."""
         pid = validate_patient_id(patient_id)
         validate_date_range(from_date, to_date)
         return data.list_appointments(pid, from_date, to_date)
@@ -69,8 +69,8 @@ def register(mcp: FastMCP) -> None:
         annotations=ToolAnnotations(
             title="Book appointment",
             readOnlyHint=False,
-            # Consequential write. The host should confirm with the user before
-            # executing — this is the human-in-the-loop signal for the action.
+            # Escrita consequente. O host deve confirmar com o usuário antes de
+            # executar — este é o sinal de human-in-the-loop para a ação.
             destructiveHint=True,
             idempotentHint=False,
         ),
@@ -79,11 +79,11 @@ def register(mcp: FastMCP) -> None:
     @audited
     @require_scope(SCOPE_WRITE)
     def book_appointment(patient_id: str, when: datetime, reason: str) -> Appointment:
-        """Book a new appointment for a patient.
+        """Agenda uma nova consulta para um paciente.
 
-        CONSEQUENTIAL WRITE: this changes state. Requires the 'appointments:write'
-        scope and is marked destructive so the MCP host prompts the user for
-        confirmation before it runs.
+        ESCRITA CONSEQUENTE: isto altera o estado. Requer o scope 'appointments:write'
+        e é marcada como destrutiva para que o host MCP solicite ao usuário a
+        confirmação antes de executar.
         """
         pid = validate_patient_id(patient_id)
         if not isinstance(reason, str) or not reason.strip():
@@ -104,11 +104,11 @@ def register(mcp: FastMCP) -> None:
     def record_lab_observation(
         patient_id: str, loinc_code: str, value: str, reference_range: str = ""
     ) -> dict:
-        """Record a lab result for a patient and return it as a FHIR Observation.
+        """Registra um resultado de laboratório para um paciente e o retorna como uma FHIR Observation.
 
-        CONSEQUENTIAL WRITE (requires 'appointments:write'). The LOINC code is
-        validated against the known code set first: a hallucinated/unknown code is
-        rejected so a fabricated clinical code never enters the record.
+        ESCRITA CONSEQUENTE (requer 'appointments:write'). O código LOINC é validado
+        primeiro contra o conjunto de códigos conhecidos: um código alucinado/desconhecido
+        é rejeitado para que um código clínico fabricado nunca entre no registro.
         """
         pid = validate_patient_id(patient_id)
         code = fhir.validate_loinc(loinc_code)
@@ -118,6 +118,6 @@ def register(mcp: FastMCP) -> None:
         lab = data.record_observation(
             pid, name=display, value=value.strip(), reference_range=reference_range, taken_at=_date.today()
         )
-        # Return the FHIR Observation for the newly recorded lab (last in the list).
+        # Retorna a FHIR Observation do lab recém-registrado (último da lista).
         index = len(data.get_labs(pid)) - 1
         return fhir.observation_resource(pid, index, lab)
