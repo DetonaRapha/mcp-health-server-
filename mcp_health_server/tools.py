@@ -20,7 +20,9 @@ from datetime import date, datetime
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from . import data
+from datetime import date as _date
+
+from . import data, fhir
 from .auth import SCOPE_READ, SCOPE_WRITE, require_scope
 from .models import Appointment, Patient, PatientSummary
 from .safety import DomainError, audited, validate_date_range, validate_patient_id
@@ -87,3 +89,35 @@ def register(mcp: FastMCP) -> None:
         if not isinstance(reason, str) or not reason.strip():
             raise DomainError("reason must be a non-empty string.")
         return data.create_appointment(pid, when, reason.strip())
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Record lab observation",
+            readOnlyHint=False,
+            destructiveHint=True,
+            idempotentHint=False,
+        ),
+    )
+    @traced
+    @audited
+    @require_scope(SCOPE_WRITE)
+    def record_lab_observation(
+        patient_id: str, loinc_code: str, value: str, reference_range: str = ""
+    ) -> dict:
+        """Record a lab result for a patient and return it as a FHIR Observation.
+
+        CONSEQUENTIAL WRITE (requires 'appointments:write'). The LOINC code is
+        validated against the known code set first: a hallucinated/unknown code is
+        rejected so a fabricated clinical code never enters the record.
+        """
+        pid = validate_patient_id(patient_id)
+        code = fhir.validate_loinc(loinc_code)
+        if not isinstance(value, str) or not value.strip():
+            raise DomainError("value must be a non-empty string.")
+        display = fhir.loinc_display(code)
+        lab = data.record_observation(
+            pid, name=display, value=value.strip(), reference_range=reference_range, taken_at=_date.today()
+        )
+        # Return the FHIR Observation for the newly recorded lab (last in the list).
+        index = len(data.get_labs(pid)) - 1
+        return fhir.observation_resource(pid, index, lab)

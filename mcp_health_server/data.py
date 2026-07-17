@@ -127,6 +127,20 @@ def get_labs(patient_id: str) -> list[LabResult]:
     return list(_store().labs.get(patient_id, []))
 
 
+def record_observation(
+    patient_id: str,
+    name: str,
+    value: str,
+    reference_range: str,
+    taken_at: date,
+) -> LabResult:
+    """Append a lab observation to a patient's record (used by the FHIR write path)."""
+    get_patient(patient_id)
+    lab = LabResult(name=name, value=value, reference_range=reference_range, taken_at=taken_at)
+    _store().labs.setdefault(patient_id, []).append(lab)
+    return lab
+
+
 def create_appointment(patient_id: str, when: datetime, reason: str) -> Appointment:
     get_patient(patient_id)
     appt = Appointment(

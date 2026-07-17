@@ -44,16 +44,22 @@ def _run_http() -> None:
 
     host = os.environ.get("MCP_HTTP_HOST", "127.0.0.1")
     port = int(os.environ.get("MCP_HTTP_PORT", "8000"))
+    stateless = os.environ.get("MCP_HTTP_STATELESS", "").strip().lower() in {"1", "true", "yes"}
 
     dev_token = mock.issue_token(scopes=[SCOPE_READ, SCOPE_WRITE])
     print(
-        f"[dev] Resource Server up on http://{host}:{port}/mcp  audience={cfg.audience}\n"
+        f"[dev] Resource Server up on http://{host}:{port}/mcp  audience={cfg.audience}"
+        f"  stateless={stateless}\n"
         f"[dev] Bearer token (read+write): {dev_token}",
         file=sys.stderr,
     )
 
     mcp = build_server(
-        token_verifier=verifier, auth_settings=settings, host=host, port=port
+        token_verifier=verifier,
+        auth_settings=settings,
+        host=host,
+        port=port,
+        stateless_http=stateless,
     )
     mcp.run(transport="streamable-http")
 

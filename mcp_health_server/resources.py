@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from . import data
+from . import data, fhir
 from .auth import SCOPE_READ, require_scope
 from .models import LabResult
 from .safety import audited, validate_patient_id
@@ -28,3 +28,18 @@ def register(mcp: FastMCP) -> None:
         """Lab results for a patient, exposed as a resource URI."""
         pid = validate_patient_id(patient_id)
         return data.get_labs(pid)
+
+    @mcp.resource("fhir://Patient/{patient_id}", mime_type="application/fhir+json")
+    @traced
+    @audited
+    @require_scope(SCOPE_READ)
+    def patient_fhir_bundle(patient_id: str) -> dict:
+        """The patient as a FHIR R4 collection Bundle (Patient + Conditions + Observations).
+
+        FHIR is the interchange format real healthcare systems speak; exposing it
+        as a resource lets a host pull structured clinical data on demand. Data
+        remains 100% synthetic.
+        """
+        pid = validate_patient_id(patient_id)
+        patient = data.get_patient(pid)
+        return fhir.patient_bundle(patient, patient.conditions, data.get_labs(pid))

@@ -136,3 +136,64 @@ regression — the difference between marketing and engineering.
 fetched+cached from a live issuer (drop-in later); no FHIR realism or containerization yet
 (v1.5); still on the v1 SDK line — the stateless v2 migration is a deliberate future step,
 not a drift.
+
+---
+
+# v1.5 — FHIR realism + container
+
+## Decisions (v1.5)
+
+1. **FHIR shape, synthetic data.** `fhir.py` maps the domain models to FHIR R4 resources
+   and a Bundle. The mapping lives on the tool/resource side of the `data.py` seam, so a
+   real FHIR backend later replaces `data.py` without touching the mappers.
+2. **Clinical-code validation as an anti-hallucination control.** The `record_lab_observation`
+   write validates the LOINC code against a known set and refuses unknown codes. Fabricated
+   medical codes are a named clinical-AI risk; rejecting them before the write is the
+   domain-specific analogue of the input validation elsewhere.
+3. **Container runs the HTTP transport as non-root**, with an optional OTLP collector under
+   a compose profile so `docker compose up` works standalone.
+
+## Trade-offs (v1.5)
+
+**Gained:** the interchange format real systems speak; a concrete guard against clinical-code
+hallucination; a reproducible remote demo.
+**Given up:** a tiny synthetic code allowlist rather than a real terminology server; no
+FHIR *search* semantics (just a per-patient Bundle).
+
+---
+
+# v2 — spec-2026-07-28 concepts on a v1 SDK (honest scope)
+
+The 2026-07-28 spec adds a stateless core, a native Tasks protocol, and server-rendered
+MCP Apps. **The SDK v2 that implements them is not published yet** (this repo pins
+`mcp>=1.28,<2.0`), so v2 here builds the *concepts* on the stable SDK and marks precisely
+what waits for the real migration.
+
+## Decisions (v2)
+
+1. **Stateless HTTP — real.** `stateless_http` exists in 1.28; `MCP_HTTP_STATELESS=1`
+   enables it. This is the one piece of the "stateless core" available today.
+2. **Tasks — application-level shape, protocol-aligned.** The native Tasks *types* ship in
+   `mcp.types` but the high-level FastMCP API does not expose task-mode tools yet. So a
+   start tool returns a handle and a get tool polls it, using the protocol's own status
+   constants (`working`/`completed`/`failed`). Migrating to native Tasks under v2 is a
+   rename, not a redesign.
+3. **MCP App — precursor, not native.** No native App type exists in 1.28, so the
+   confirmation UI is an HTML fragment served as a resource, kept **PII-free** (patient id
+   only) so nothing sensitive rides in the audited payload. The genuine interactive HITL
+   path today is elicitation (`Context.elicit`); native server-rendered Apps arrive with v2.
+
+## Alternatives considered (v2)
+
+- **Actually migrate to SDK v2 now.** Impossible — not on PyPI. Faking a migration or
+  vendoring an unreleased SDK would be dishonest and fragile. We wait and document.
+- **Put patient data in the confirmation UI.** Rejected — a free-text HTML result bypasses
+  the dict-key redactor and would leak into the audit log. The fragment references the
+  patient by id only.
+
+## Trade-offs (v2)
+
+**Gained:** stateless deployability today; a Tasks-shaped API that upgrades cleanly; a
+tangible App precursor.
+**Given up (until SDK v2 ships):** native Tasks lifecycle/notifications, native
+server-rendered Apps, and the stateless protocol core beyond the transport flag.

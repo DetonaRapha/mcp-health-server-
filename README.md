@@ -30,7 +30,11 @@ says*; this server governs *what the model can execute through tools*.
 | Tool (read) | `get_patient(patient_id)` | `patients:read` | Demographics and conditions. |
 | Tool (read) | `list_appointments(patient_id, from_date?, to_date?)` | `patients:read` | Optional date range. |
 | Tool (**write**) | `book_appointment(patient_id, when, reason)` | `appointments:write` | **Consequential** — host confirms. |
+| Tool (**write**) | `record_lab_observation(patient_id, loinc_code, value, …)` | `appointments:write` | **Consequential**; LOINC code validated (anti-hallucination). |
+| Tool (task) | `start_cohort_report(condition)` / `get_cohort_report(task_id)` | `patients:read` | Long-running aggregate via the Tasks pattern. |
 | Resource | `patient://{patient_id}/labs` | `patients:read` | Lab results, addressable by URI. |
+| Resource | `fhir://Patient/{patient_id}` | `patients:read` | Patient as a FHIR R4 Bundle. |
+| Resource | `ui://appointment/confirm/{patient_id}` | `patients:read` | Server-rendered HTML confirmation (MCP App precursor). |
 | Prompt | `triage_summary(patient_id)` | — | Structured triage template. |
 
 ## Run it
@@ -74,6 +78,20 @@ Configuration comes from the environment:
 
 > The dev token is minted by an in-process **mock Authorization Server** for dev/CI only.
 > A real deployment verifies against a real issuer's JWKS and never uses the mock.
+
+Extra HTTP knobs: `MCP_HTTP_STATELESS=1` runs the server without a session
+(`Mcp-Session-Id`), so it can sit behind a plain round-robin load balancer — the
+direction the 2026-07-28 spec formalises.
+
+### Container (Docker)
+
+```bash
+docker compose up                          # server only, console tracing
+docker compose --profile observability up  # server + OTLP collector
+```
+
+The container runs the Streamable HTTP transport as a non-root user and prints a dev
+bearer token to its logs on startup.
 
 ### Connect from the MCP Inspector
 
@@ -154,11 +172,28 @@ See [DESIGN.md](DESIGN.md) — thin layer, transports, security as a *verifiable
 Resource-Server auth, synthetic-only data, and the SDK version decision, each with its
 "why not the other way".
 
-## Future (intentionally out of scope for now)
+## FHIR realism & v2 concepts (built)
 
-- **v1.5 — FHIR realism + container:** FHIR-shaped resources (Patient/Observation/Condition),
-  clinical-code (LOINC/ICD) validation against hallucination, `Dockerfile` + compose.
-- **v2 — 2026-07-28 spec:** migrate to the SDK v2 (stateless core), `Tasks` for long
-  operations, and possibly an **MCP App** confirmation UI for the write. Multi-agent
-  (agent-to-agent) is on the horizon, not built.
-- Real FHIR/EHR backend behind the `data.py` seam; real external Authorization Server / IdP.
+- **FHIR (v1.5):** `fhir://Patient/{id}` returns a FHIR R4 Bundle (Patient + Conditions +
+  Observations). The write tool `record_lab_observation` **validates the LOINC code against
+  a known set and rejects fabricated codes** — the named anti-hallucination control for
+  clinical AI. Data stays synthetic; `data.py` is the one seam a real FHIR/EHR backend
+  would replace.
+- **Stateless HTTP (v2):** `MCP_HTTP_STATELESS=1` — real, using the SDK's `stateless_http`.
+- **Tasks pattern (v2):** `start_cohort_report` returns a handle; `get_cohort_report` polls
+  it, using the protocol's own status strings (`working`/`completed`/…).
+- **MCP App precursor (v2):** `ui://appointment/confirm/{id}` serves a PII-free HTML
+  confirmation card.
+
+> **Honesty note on v2.** The MCP SDK v2 (native stateless core, native Tasks tools,
+> native server-rendered MCP Apps) is not published yet — this repo pins the stable v1
+> line (`mcp>=1.28,<2.0`). The items above implement the v2 *concepts* on the stable SDK;
+> the native migration is a deliberate future step once v2 ships. Today's supported
+> interactive HITL path is elicitation (`Context.elicit`); native Apps arrive with v2.
+
+## Still future (not built)
+
+- Migrate to the MCP SDK v2 once published (native stateless core / Tasks / MCP Apps).
+- Multi-agent (agent-to-agent) coordination.
+- Real FHIR/EHR backend behind the `data.py` seam; real external Authorization Server / IdP;
+  JWKS fetched+cached from a live issuer instead of the in-process mock.

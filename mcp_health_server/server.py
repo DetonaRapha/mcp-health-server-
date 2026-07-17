@@ -14,7 +14,7 @@ from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 
-from . import prompts, resources, tools
+from . import apps, prompts, resources, tasks, tools
 from .safety import configure_audit_logging
 from .telemetry import configure_tracing
 
@@ -34,11 +34,14 @@ def build_server(
     auth_settings: AuthSettings | None = None,
     host: str = "127.0.0.1",
     port: int = 8000,
+    stateless_http: bool = False,
 ) -> FastMCP:
     """Create a FastMCP instance with all primitives registered.
 
-    ``host``/``port`` apply only to the Streamable HTTP transport; stdio ignores
-    them.
+    ``host``/``port``/``stateless_http`` apply only to the Streamable HTTP
+    transport; stdio ignores them. ``stateless_http=True`` runs without a session
+    (no ``Mcp-Session-Id``), the direction the 2026-07-28 spec formalises, so the
+    server can sit behind a plain round-robin load balancer.
     """
     configure_audit_logging()
     configure_tracing()
@@ -49,10 +52,13 @@ def build_server(
         auth=auth_settings,
         host=host,
         port=port,
+        stateless_http=stateless_http,
     )
     tools.register(mcp)
     resources.register(mcp)
     prompts.register(mcp)
+    tasks.register(mcp)
+    apps.register(mcp)
     return mcp
 
 
