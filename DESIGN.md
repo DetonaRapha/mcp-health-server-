@@ -76,3 +76,63 @@ clarity from the thin-layer seam; fast, transport-free tests via the in-memory c
 data backend, and tolerant handling of extra arguments rather than strict rejection. Each
 is a scoped v0 boundary, not an oversight — the "why not now" is recorded above so the next
 increment starts from an intentional baseline.
+
+---
+
+# v1 — remote, authorized, and *verifiably* safe
+
+v1 turns the v0 proof into a production-grade, hireable artifact by closing the gaps the
+market both demands and where the ecosystem is weakest: transport, authorization,
+observability, and — the differentiator — **security you can run in CI**.
+
+## Decisions (v1)
+
+1. **Two transports, one server.** `build_server` is transport-agnostic; the entrypoint
+   selects stdio (dev, no auth) or Streamable HTTP (remote, auth on) by `MCP_TRANSPORT`.
+   Nothing about the tools changes — the thin layer pays off.
+
+2. **OAuth 2.1 as *Resource Server*, not Authorization Server.** The server validates
+   tokens (RS256 signature, `exp`, `iss`, and `aud` per RFC 8707 to stop cross-resource
+   replay) and enforces scopes; it never authenticates users or mints tokens. Validation
+   uses PyJWT — no hand-rolled crypto. Only ~8.5% of MCP servers do this, so doing it
+   correctly is a strong seniority signal.
+
+3. **Per-tool scopes, enforced in-process.** `require_scope` reads the SDK's auth context
+   and gates each tool (`patients:read` vs `appointments:write`). It sits beneath
+   `@audited` so denials are audited, and it is a no-op when auth is disabled so stdio/dev
+   still works. The `__required_scope__` marker propagates up the `functools.wraps` chain
+   for the tracer to record.
+
+4. **Security is *verifiable*, not asserted.** `tests/redteam/` reproduces the real 2026
+   attacks — tool poisoning, authz escalation, PII leakage — and runs as a CI gate. A
+   meta-test (`test_gate_is_real`) shows the outcome flips when the guardrail is loosened,
+   so a green result can't be vacuous.
+
+5. **PII-safe observability.** One span per call with non-sensitive attributes only,
+   mirroring the audit outcome. The tracer uses a module-owned provider (not OTel's
+   set-once global) so tests can capture spans deterministically.
+
+## Alternatives considered (v1)
+
+- **Roll our own token validation / Authorization Server.** Rejected — every MCP security
+  guide says use tested libraries; we verify with PyJWT and defer issuance to a real IdP
+  (a mock AS stands in for dev/CI only, never production).
+- **Enforce auth at the transport layer only.** The SDK does gate HTTP requests (verified:
+  unauthenticated → 401), but that alone can't express *per-tool* scopes, and it doesn't
+  run under the in-memory test client. Per-tool `require_scope` gives both differentiated
+  authorization and transport-independent testability.
+- **Test auth end-to-end through the in-memory client.** The client session runs tools in a
+  separate task where the auth context var doesn't propagate, so scope tests would be
+  impossible to set up honestly. We test the verifier as a unit and the scope gate on the
+  tool functions within a `principal()` context — both are real, hermetic checks.
+
+## Trade-offs (v1)
+
+**Gained:** remote deployability; a real Resource-Server auth posture; least-privilege
+scopes; production-style tracing; and a security suite that *fails the build* on
+regression — the difference between marketing and engineering.
+
+**Given up (deferred by design):** JWKS is provided by an in-process mock rather than
+fetched+cached from a live issuer (drop-in later); no FHIR realism or containerization yet
+(v1.5); still on the v1 SDK line — the stateless v2 migration is a deliberate future step,
+not a drift.

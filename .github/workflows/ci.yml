@@ -29,6 +29,11 @@ jobs:
       - name: Run tests
         run: pytest -q
 
+      - name: Red-team security gate (poisoning / authz / PII leak)
+        # Runs the adversarial suite on its own so a security regression is an
+        # unmistakable, separately-labelled build failure.
+        run: pytest tests/redteam -q
+
       - name: Smoke-check stdio boot
         run: |
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \

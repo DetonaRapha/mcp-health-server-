@@ -13,17 +13,10 @@ import logging
 import pytest
 from mcp.shared.memory import create_connected_server_and_client_session as connect
 
-from mcp_health_server import data
 from mcp_health_server.safety import AUDIT_LOGGER_NAME, redact
 from mcp_health_server.server import build_server
 
-
-@pytest.fixture(autouse=True)
-def fresh_store():
-    """Reset the cached data store so write tests don't leak between cases."""
-    data.reset_cache()
-    yield
-    data.reset_cache()
+# The ``fresh_store`` autouse fixture lives in conftest.py.
 
 
 def _structured(result):

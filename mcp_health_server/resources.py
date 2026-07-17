@@ -13,13 +13,17 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from . import data
+from .auth import SCOPE_READ, require_scope
 from .models import LabResult
 from .safety import audited, validate_patient_id
+from .telemetry import traced
 
 
 def register(mcp: FastMCP) -> None:
     @mcp.resource("patient://{patient_id}/labs")
+    @traced
     @audited
+    @require_scope(SCOPE_READ)
     def patient_labs(patient_id: str) -> list[LabResult]:
         """Lab results for a patient, exposed as a resource URI."""
         pid = validate_patient_id(patient_id)

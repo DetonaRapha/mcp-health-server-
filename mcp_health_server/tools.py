@@ -1,10 +1,16 @@
 """Tools — the thin translation layer.
 
-Each tool does exactly three things: validate the incoming arguments against the
-domain contract (never trusting the model), delegate to ``data.py``, and return a
-typed model. The ``@audited`` decorator sits closest to the function so every call
-is logged with PII redacted; ``@mcp.tool`` sits on top and derives the JSON schema
-from the (preserved) signature.
+Each tool: enforce the required OAuth scope (when auth is on), validate the
+incoming arguments against the domain contract (never trusting the model),
+delegate to ``data.py``, and return a typed model.
+
+Decorator stack (top-to-bottom = outer-to-inner):
+    @mcp.tool          derives the JSON schema from the preserved signature
+    @traced            opens a PII-safe span around the whole call
+    @audited           logs the call/outcome with PII redacted (audits denials)
+    @require_scope     authorizes before anything else runs
+The ``__required_scope__`` marker set by ``require_scope`` propagates up the
+``functools.wraps`` chain so ``traced`` can record it on the span.
 """
 
 from __future__ import annotations
@@ -15,38 +21,38 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from . import data
+from .auth import SCOPE_READ, SCOPE_WRITE, require_scope
 from .models import Appointment, Patient, PatientSummary
-from .safety import audited, validate_date_range, validate_patient_id
+from .safety import DomainError, audited, validate_date_range, validate_patient_id
+from .telemetry import traced
 
 
 def register(mcp: FastMCP) -> None:
     """Register all tools on the given FastMCP instance."""
 
-    @mcp.tool(
-        annotations=ToolAnnotations(title="Search patients", readOnlyHint=True),
-    )
+    @mcp.tool(annotations=ToolAnnotations(title="Search patients", readOnlyHint=True))
+    @traced
     @audited
+    @require_scope(SCOPE_READ)
     def search_patients(query: str) -> list[PatientSummary]:
         """Search synthetic patients by name or condition. Returns lean summaries."""
         if not isinstance(query, str):
-            from .safety import DomainError
-
             raise DomainError("query must be a string.")
         return data.search_patients(query, today=date.today())
 
-    @mcp.tool(
-        annotations=ToolAnnotations(title="Get patient", readOnlyHint=True),
-    )
+    @mcp.tool(annotations=ToolAnnotations(title="Get patient", readOnlyHint=True))
+    @traced
     @audited
+    @require_scope(SCOPE_READ)
     def get_patient(patient_id: str) -> Patient:
         """Return a patient's demographics and conditions by id."""
         pid = validate_patient_id(patient_id)
         return data.get_patient(pid)
 
-    @mcp.tool(
-        annotations=ToolAnnotations(title="List appointments", readOnlyHint=True),
-    )
+    @mcp.tool(annotations=ToolAnnotations(title="List appointments", readOnlyHint=True))
+    @traced
     @audited
+    @require_scope(SCOPE_READ)
     def list_appointments(
         patient_id: str,
         from_date: date | None = None,
@@ -67,15 +73,16 @@ def register(mcp: FastMCP) -> None:
             idempotentHint=False,
         ),
     )
+    @traced
     @audited
+    @require_scope(SCOPE_WRITE)
     def book_appointment(patient_id: str, when: datetime, reason: str) -> Appointment:
         """Book a new appointment for a patient.
 
-        CONSEQUENTIAL WRITE: this changes state. Marked destructive so the MCP
-        host prompts the user for confirmation before it runs.
+        CONSEQUENTIAL WRITE: this changes state. Requires the 'appointments:write'
+        scope and is marked destructive so the MCP host prompts the user for
+        confirmation before it runs.
         """
-        from .safety import DomainError
-
         pid = validate_patient_id(patient_id)
         if not isinstance(reason, str) or not reason.strip():
             raise DomainError("reason must be a non-empty string.")
