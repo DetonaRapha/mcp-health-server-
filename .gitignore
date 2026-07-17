@@ -1,0 +1,26 @@
+# Environments & secrets
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Audit logs (may contain redacted operational data — never commit)
+*.log
+audit/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
