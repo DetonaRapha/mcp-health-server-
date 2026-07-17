@@ -1,0 +1,90 @@
+{
+  "_notice": "100% SYNTHETIC / FICTIONAL DATA. These are invented people. Any resemblance to a real patient, name, or record is coincidental. Never replace this file with real patient data.",
+  "patients": [
+    {
+      "id": "p-001",
+      "name": "Rafaela Almeida",
+      "birth_date": "1979-03-12",
+      "conditions": ["type 2 diabetes", "hypertension"],
+      "appointments": [
+        { "id": "a-001", "when": "2026-02-10T09:30:00", "reason": "Diabetes follow-up" },
+        { "id": "a-002", "when": "2026-05-18T14:00:00", "reason": "Blood pressure review" },
+        { "id": "a-003", "when": "2026-08-21T10:15:00", "reason": "Annual check-up" }
+      ],
+      "labs": [
+        { "name": "HbA1c", "value": "7.4 %", "reference_range": "< 5.7 %", "taken_at": "2026-02-08" },
+        { "name": "Fasting glucose", "value": "142 mg/dL", "reference_range": "70-99 mg/dL", "taken_at": "2026-02-08" },
+        { "name": "Systolic BP", "value": "148 mmHg", "reference_range": "< 120 mmHg", "taken_at": "2026-05-18" }
+      ]
+    },
+    {
+      "id": "p-002",
+      "name": "Bruno Carvalho",
+      "birth_date": "1991-11-04",
+      "conditions": ["asthma"],
+      "appointments": [
+        { "id": "a-004", "when": "2026-03-02T11:00:00", "reason": "Asthma control review" },
+        { "id": "a-005", "when": "2026-09-14T16:30:00", "reason": "Spirometry" }
+      ],
+      "labs": [
+        { "name": "IgE", "value": "210 IU/mL", "reference_range": "< 100 IU/mL", "taken_at": "2026-03-01" },
+        { "name": "Eosinophils", "value": "6 %", "reference_range": "1-4 %", "taken_at": "2026-03-01" }
+      ]
+    },
+    {
+      "id": "p-003",
+      "name": "Camila Duarte",
+      "birth_date": "1965-07-28",
+      "conditions": ["hypertension", "hyperlipidemia"],
+      "appointments": [
+        { "id": "a-006", "when": "2026-01-20T08:45:00", "reason": "Cholesterol management" },
+        { "id": "a-007", "when": "2026-07-01T13:15:00", "reason": "Cardiology referral" }
+      ],
+      "labs": [
+        { "name": "LDL cholesterol", "value": "168 mg/dL", "reference_range": "< 100 mg/dL", "taken_at": "2026-01-19" },
+        { "name": "Total cholesterol", "value": "245 mg/dL", "reference_range": "< 200 mg/dL", "taken_at": "2026-01-19" }
+      ]
+    },
+    {
+      "id": "p-004",
+      "name": "Diego Esteves",
+      "birth_date": "2001-05-16",
+      "conditions": ["migraine"],
+      "appointments": [
+        { "id": "a-008", "when": "2026-04-11T15:00:00", "reason": "Migraine consultation" }
+      ],
+      "labs": [
+        { "name": "Hemoglobin", "value": "15.1 g/dL", "reference_range": "13.5-17.5 g/dL", "taken_at": "2026-04-10" }
+      ]
+    },
+    {
+      "id": "p-005",
+      "name": "Elisa Fontes",
+      "birth_date": "1958-12-02",
+      "conditions": ["osteoarthritis", "type 2 diabetes"],
+      "appointments": [
+        { "id": "a-009", "when": "2026-02-25T09:00:00", "reason": "Joint pain assessment" },
+        { "id": "a-010", "when": "2026-06-30T11:45:00", "reason": "Diabetes follow-up" },
+        { "id": "a-011", "when": "2026-11-09T10:00:00", "reason": "Physiotherapy review" }
+      ],
+      "labs": [
+        { "name": "HbA1c", "value": "8.1 %", "reference_range": "< 5.7 %", "taken_at": "2026-06-28" },
+        { "name": "ESR", "value": "34 mm/h", "reference_range": "< 20 mm/h", "taken_at": "2026-02-24" }
+      ]
+    },
+    {
+      "id": "p-006",
+      "name": "Felipe Gouveia",
+      "birth_date": "1987-09-19",
+      "conditions": ["hypothyroidism"],
+      "appointments": [
+        { "id": "a-012", "when": "2026-03-30T14:30:00", "reason": "Thyroid function review" },
+        { "id": "a-013", "when": "2026-10-05T09:15:00", "reason": "Medication titration" }
+      ],
+      "labs": [
+        { "name": "TSH", "value": "6.8 mIU/L", "reference_range": "0.4-4.0 mIU/L", "taken_at": "2026-03-29" },
+        { "name": "Free T4", "value": "0.9 ng/dL", "reference_range": "0.8-1.8 ng/dL", "taken_at": "2026-03-29" }
+      ]
+    }
+  ]
+}
