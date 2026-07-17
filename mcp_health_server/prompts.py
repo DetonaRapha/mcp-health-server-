@@ -1,11 +1,11 @@
-"""Prompts — reusable, structured starting points for multi-step flows.
+"""Prompts — pontos de partida reutilizáveis e estruturados para fluxos de múltiplas etapas.
 
-A prompt is a template the host can surface to the user. ``triage_summary``
-gives the model a disciplined scaffold for summarising a patient for triage,
-reducing the chance of an unstructured, error-prone free-form answer.
+Um prompt é um template que o host pode apresentar ao usuário. ``triage_summary``
+dá ao modelo um scaffold disciplinado para resumir um paciente para triagem,
+reduzindo a chance de uma resposta livre, desestruturada e propensa a erros.
 
-The template only references the patient by id and instructs the model to pull
-data via the tools/resource — it never embeds patient data itself.
+O template referencia o paciente apenas pelo id e instrui o modelo a buscar os
+dados via as tools/resource — ele nunca embute os dados do paciente em si.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from .safety import validate_patient_id
 def register(mcp: FastMCP) -> None:
     @mcp.prompt(title="Triage summary")
     def triage_summary(patient_id: str) -> str:
-        """A prompt template instructing the model to summarise a patient for triage."""
+        """Um template de prompt que instrui o modelo a resumir um paciente para triagem."""
         pid = validate_patient_id(patient_id)
         return (
             f"You are assisting a clinician with triage for patient {pid}.\n\n"

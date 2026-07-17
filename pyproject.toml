@@ -12,14 +12,24 @@ dependencies = [
     # SDK pinned to the stable v1 line on purpose. The v2 line (tracking the
     # 2026-07-28 spec) carries breaking changes; we do not float into it until
     # a conscious migration. See DESIGN.md "SDK version" for the rationale.
+    # mcp brings starlette + uvicorn transitively for the Streamable HTTP path.
     "mcp>=1.28,<2.0",
     "pydantic>=2.7,<3.0",
+    # OAuth 2.1 Resource Server: local RS256 JWT validation (no hand-rolled crypto).
+    "pyjwt[crypto]>=2.8",
+    # Observability: one PII-safe span per tool call.
+    "opentelemetry-api>=1.27",
+    "opentelemetry-sdk>=1.27",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+]
+otlp = [
+    # Only needed when MCP_OTEL_EXPORTER=otlp.
+    "opentelemetry-exporter-otlp-proto-http>=1.27",
 ]
 
 [project.scripts]

@@ -1,4 +1,4 @@
-"""mcp-health-server: a thin, safety-first MCP server over synthetic health data."""
+"""mcp-health-server: um servidor MCP enxuto e com foco em segurança sobre dados de saúde sintéticos."""
 
 from __future__ import annotations
 

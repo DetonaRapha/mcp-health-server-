@@ -1,0 +1,31 @@
+# Local demo: the MCP health server over Streamable HTTP (OAuth 2.1 Resource
+# Server, in-process mock Authorization Server) with an optional OTLP collector.
+#
+#   docker compose up                          # server only, console tracing
+#   docker compose --profile observability up  # server + OTLP collector
+#
+# The server prints a dev bearer token to its logs on startup. Synthetic data only.
+
+services:
+  mcp-health:
+    build: .
+    image: mcp-health-server:latest
+    ports:
+      - "8000:8000"
+    environment:
+      MCP_TRANSPORT: streamable-http
+      MCP_HTTP_HOST: 0.0.0.0
+      MCP_HTTP_PORT: "8000"
+      MCP_AUTH_AUDIENCE: "https://health.local/mcp"
+      # Console tracing by default; switch to OTLP for the collector profile:
+      MCP_OTEL_EXPORTER: "console"
+      # For the observability profile, uncomment these two lines:
+      # MCP_OTEL_EXPORTER: "otlp"
+      # OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    profiles: ["observability"]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    ports:
+      - "4318:4318"  # OTLP HTTP

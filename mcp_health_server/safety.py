@@ -1,16 +1,16 @@
-"""Safety primitives: configuration, input validation, and PII-redacting audit.
+"""Primitivas de segurança: configuração, validação de entrada e auditoria com redação de PII.
 
-This module is the project's differentiator. In a regulated domain you cannot
-trust the model to send well-formed arguments, and you cannot let identifying
-data leak into logs. So:
+Este módulo é o diferencial do projeto. Em um domínio regulado você não pode
+confiar que o modelo enviará argumentos bem-formados, e não pode deixar dados
+identificáveis vazarem para os logs. Então:
 
-* Configuration and any secret come *only* from environment variables — never
-  from a tool schema or a resource payload.
-* Every tool invocation is wrapped by :func:`audited`, which records the tool
-  name, a timestamp, the arguments, and the result — with PII redacted.
-* Reusable validators (:func:`validate_patient_id`, :func:`validate_date_range`)
-  raise :class:`DomainError`, which tools translate into clean tool errors
-  instead of leaking raw stack traces to the model.
+* A configuração e qualquer segredo vêm *apenas* de variáveis de ambiente — nunca
+  de um schema de tool ou de um payload de resource.
+* Cada invocação de tool é envolvida por :func:`audited`, que registra o nome da
+  tool, um timestamp, os argumentos e o resultado — com a PII redigida.
+* Validadores reutilizáveis (:func:`validate_patient_id`, :func:`validate_date_range`)
+  levantam :class:`DomainError`, que as tools traduzem em erros de tool limpos em
+  vez de vazar stack traces cruas para o modelo.
 """
 
 from __future__ import annotations
@@ -28,11 +28,11 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 
 # --------------------------------------------------------------------------- #
-# Configuration — environment only
+# Configuração — somente ambiente
 # --------------------------------------------------------------------------- #
 
-# Field names treated as PII. Matching is case-insensitive and substring-based,
-# so "patient_name", "birthDate", "cpf_number", etc. are all caught.
+# Nomes de campos tratados como PII. A correspondência é case-insensitive e por
+# substring, então "patient_name", "birthDate", "cpf_number", etc. são todos capturados.
 _PII_FIELDS = ("name", "birth_date", "birthdate", "dob", "document", "cpf", "rg", "ssn")
 
 _DEFAULT_DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "patients.json"
@@ -40,7 +40,7 @@ _DEFAULT_DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "patients
 
 @dataclass(frozen=True)
 class Config:
-    """Runtime configuration, sourced exclusively from the environment."""
+    """Configuração de runtime, obtida exclusivamente do ambiente."""
 
     data_path: Path
     log_level: str
@@ -54,7 +54,7 @@ class Config:
 
 
 def get_config() -> Config:
-    """Read configuration from the environment on each call (test-friendly)."""
+    """Lê a configuração do ambiente a cada chamada (test-friendly)."""
     return Config.from_env()
 
 
@@ -67,15 +67,15 @@ _audit_logger = logging.getLogger(AUDIT_LOGGER_NAME)
 
 
 def configure_audit_logging() -> logging.Logger:
-    """Attach a stderr handler to the audit logger (idempotent).
+    """Anexa um handler de stderr ao audit logger (idempotente).
 
-    stderr is used on purpose: stdio transport reserves stdout for the JSON-RPC
-    channel, so anything printed to stdout would corrupt the protocol.
+    O stderr é usado de propósito: o transporte stdio reserva o stdout para o
+    canal JSON-RPC, então qualquer coisa impressa no stdout corromperia o protocolo.
     """
     level = get_config().log_level
     _audit_logger.setLevel(level)
     if not _audit_logger.handlers:
-        handler = logging.StreamHandler()  # defaults to stderr
+        handler = logging.StreamHandler()  # usa stderr por padrão
         handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
         _audit_logger.addHandler(handler)
     _audit_logger.propagate = False
@@ -93,30 +93,31 @@ def _is_pii_key(key: str) -> bool:
 
 
 def _mask_name(value: str) -> str:
-    """'Rafaela Almeida' -> 'R**** A*****' — keeps initials, hides the rest."""
+    """'Rafaela Almeida' -> 'R**** A*****' — mantém as iniciais, esconde o resto."""
     parts = value.split()
     masked = [p[0] + "*" * max(len(p) - 1, 1) if p else p for p in parts]
     return " ".join(masked) if masked else "****"
 
 
 def _mask_scalar(key: str, value: Any) -> Any:
-    """Mask a single leaf value known to be PII by its key."""
+    """Mascara um único valor folha conhecido como PII pela sua chave."""
     if isinstance(value, str) and ("name" in key.lower()):
         return _mask_name(value)
     if isinstance(value, (date, datetime)):
         return "****-**-**"
     if isinstance(value, str):
-        # Dates-as-strings, documents, etc.: keep length signal, hide content.
+        # Datas-como-strings, documentos, etc.: mantém o sinal de comprimento, esconde o conteúdo.
         return "*" * len(value) if value else "****"
     return "****"
 
 
 def redact(obj: Any, *, _key: str = "") -> Any:
-    """Return a deep copy of ``obj`` with any PII-keyed leaves masked.
+    """Retorna uma cópia profunda de ``obj`` com quaisquer folhas de chave PII mascaradas.
 
-    Handles Pydantic models, dataclasses-as-dicts, plain dicts, and sequences.
-    A key is considered PII by name (see ``_PII_FIELDS``); the value is masked
-    regardless of type so a mislabelled string date is still hidden.
+    Lida com modelos Pydantic, dataclasses-como-dicts, dicts simples e sequências.
+    Uma chave é considerada PII pelo nome (veja ``_PII_FIELDS``); o valor é
+    mascarado independentemente do tipo, então uma data em string rotulada
+    incorretamente ainda fica escondida.
     """
     if isinstance(obj, BaseModel):
         return redact(obj.model_dump(mode="python"), _key=_key)
@@ -140,16 +141,16 @@ def _safe_json(value: Any) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Domain errors & validators
+# Erros de domínio e validadores
 # --------------------------------------------------------------------------- #
 
 
 class DomainError(ValueError):
-    """A clean, client-safe error. Tools surface its message; the host shows it."""
+    """Um erro limpo e seguro para o cliente. As tools expõem sua mensagem; o host a exibe."""
 
 
 def validate_patient_id(patient_id: Any) -> str:
-    """Enforce the 'p-NNN' id shape before any lookup. Never trust the caller."""
+    """Impõe o formato de id 'p-NNN' antes de qualquer lookup. Nunca confie no chamador."""
     if not isinstance(patient_id, str) or not patient_id.strip():
         raise DomainError("patient_id must be a non-empty string.")
     pid = patient_id.strip()
@@ -160,7 +161,7 @@ def validate_patient_id(patient_id: Any) -> str:
 
 
 def validate_date_range(from_date: date | None, to_date: date | None) -> None:
-    """Reject an inverted [from, to] window."""
+    """Rejeita uma janela [from, to] invertida."""
     if from_date is not None and to_date is not None and from_date > to_date:
         raise DomainError(
             f"Invalid date range: from_date ({from_date}) is after to_date ({to_date})."
@@ -168,22 +169,22 @@ def validate_date_range(from_date: date | None, to_date: date | None) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# The audit decorator
+# O decorator de auditoria
 # --------------------------------------------------------------------------- #
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 
 def audited(func: F) -> F:
-    """Wrap a tool so every call is logged with arguments and result redacted.
+    """Envolve uma tool para que cada chamada seja logada com argumentos e resultado redigidos.
 
-    Applied *beneath* ``@mcp.tool`` (i.e. closest to the function) so FastMCP
-    still derives the schema from the original signature — ``functools.wraps``
-    preserves ``__wrapped__``, which ``inspect.signature`` follows.
+    Aplicado *abaixo* de ``@mcp.tool`` (ou seja, mais próximo da função) para que
+    o FastMCP ainda derive o schema da assinatura original — ``functools.wraps``
+    preserva ``__wrapped__``, que ``inspect.signature`` segue.
 
-    On :class:`DomainError` the failure is logged and re-raised so the host sees
-    a clean message; on unexpected errors the exception type is logged (never
-    its message, which could contain PII) and a generic error is raised.
+    Em :class:`DomainError` a falha é logada e relançada para que o host veja uma
+    mensagem limpa; em erros inesperados o tipo da exceção é logado (nunca sua
+    mensagem, que poderia conter PII) e um erro genérico é levantado.
     """
 
     @functools.wraps(func)
@@ -199,7 +200,7 @@ def audited(func: F) -> F:
                 func.__name__, started, redacted_args, exc,
             )
             raise
-        except Exception as exc:  # noqa: BLE001 — log type only, never the message
+        except Exception as exc:  # noqa: BLE001 — loga apenas o tipo, nunca a mensagem
             logger.error(
                 "tool=%s ts=%s args=%s outcome=error error_type=%s",
                 func.__name__, started, redacted_args, type(exc).__name__,

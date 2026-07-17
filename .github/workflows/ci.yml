@@ -29,8 +29,31 @@ jobs:
       - name: Run tests
         run: pytest -q
 
+      - name: Red-team security gate (poisoning / authz / PII leak)
+        # Runs the adversarial suite on its own so a security regression is an
+        # unmistakable, separately-labelled build failure.
+        run: pytest tests/redteam -q
+
       - name: Smoke-check stdio boot
         run: |
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
             | timeout 10 python -m mcp_health_server \
             | grep -q '"serverInfo"'
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t mcp-health-server:ci .
+
+      - name: Boot container and require 401 unauthenticated
+        run: |
+          docker run -d --name mcp -p 8000:8000 mcp-health-server:ci
+          sleep 6
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:8000/mcp \
+            -H "Accept: application/json, text/event-stream" \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}')
+          docker rm -f mcp
+          test "$code" = "401"
